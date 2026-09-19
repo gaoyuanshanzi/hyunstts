@@ -1,9 +1,8 @@
-// HyunsTTS Main Application Logic (v20260920_v3)
+// HyunsTTS Main Application Logic (v20260920_v5)
 
 (function () {
   let currentAudioUrl = null;
 
-  // Global handler so button works even if listener binding was delayed
   window.handleGenerateAudio = async function () {
     const textInput = document.getElementById("ttsTextInput");
     const langSelect = document.getElementById("languageSelect");
@@ -38,7 +37,7 @@
       if (isLoading) {
         if (generateSpinner) generateSpinner.classList.remove("hidden");
         if (generateIcon) generateIcon.classList.add("hidden");
-        if (generateBtnText) generateBtnText.textContent = "음성 합성 중...";
+        if (generateBtnText) generateBtnText.textContent = "고음질 MP3 합성 중...";
       } else {
         if (generateSpinner) generateSpinner.classList.add("hidden");
         if (generateIcon) generateIcon.classList.remove("hidden");
@@ -76,63 +75,83 @@
       pitch
     });
 
-    let audioBlob = null;
-    let requestSuccess = false;
+    let rawBlob = null;
+    let isSuccess = false;
 
-    // 1. Try Primary /api/tts endpoint
+    // Call /api/tts endpoint
     try {
-      const response = await fetch("/api/tts", {
+      let response = await fetch("/api/tts", {
         method: "POST",
         headers: headers,
         body: payload
       });
 
-      if (response.ok) {
-        audioBlob = await response.blob();
-        requestSuccess = true;
-      } else if (response.status === 404) {
-        // Try fallback file-path endpoint
-        const retryRes = await fetch("/api/tts.py", {
+      if (!response.ok && response.status === 404) {
+        response = await fetch("/api/tts.py", {
           method: "POST",
           headers: headers,
           body: payload
         });
-        if (retryRes.ok) {
-          audioBlob = await retryRes.blob();
-          requestSuccess = true;
+      }
+
+      if (response.ok) {
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("json")) {
+          const jsonErr = await response.json();
+          showAlert(jsonErr.error || "음성 합성 실패", "error");
+          setLoading(false);
+          return;
         }
+
+        rawBlob = await response.blob();
+        if (rawBlob && rawBlob.size > 500) {
+          isSuccess = true;
+        }
+      } else {
+        let errMsg = "서버 응답 오류가 발생했습니다.";
+        try {
+          const errData = await response.json();
+          errMsg = errData.error || errMsg;
+        } catch (e) {}
+        showAlert(errMsg, "error");
       }
     } catch (netErr) {
-      console.warn("Backend TTS request failed, trying client speech fallback:", netErr);
+      console.error("TTS fetch network error:", netErr);
+      showAlert("서버 연결에 실패했습니다. 네트워크를 확인해주세요.", "error");
     }
 
-    // 2. Process Output if Audio Received
-    if (requestSuccess && audioBlob && audioBlob.size > 100) {
+    // Process valid audio file
+    if (isSuccess && rawBlob) {
       if (currentAudioUrl) {
         URL.revokeObjectURL(currentAudioUrl);
       }
-      currentAudioUrl = URL.createObjectURL(audioBlob);
+
+      // Create pure MP3 Blob
+      const mp3Blob = new Blob([rawBlob], { type: "audio/mpeg" });
+      currentAudioUrl = URL.createObjectURL(mp3Blob);
 
       if (audioPlayer) {
         audioPlayer.src = currentAudioUrl;
         audioPlayer.load();
         try {
           await audioPlayer.play();
-        } catch (e) {
-          console.log("Autoplay policy prevented audio, user can play manually:", e);
+        } catch (playErr) {
+          console.log("Autoplay note:", playErr);
         }
       }
 
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "");
+      const safeLang = language === "auto" ? "auto" : language;
+      const downloadFilename = `tts_${safeLang}_${dateStr}_${timeStr}.mp3`;
+
       if (downloadBtn) {
-        const now = new Date();
-        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
-        const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "");
         downloadBtn.href = currentAudioUrl;
-        downloadBtn.download = `tts_${language}_${dateStr}_${timeStr}.mp3`;
+        downloadBtn.setAttribute("download", downloadFilename);
       }
 
       if (audioTimeBadge) {
-        const now = new Date();
         audioTimeBadge.textContent = `완료: ${now.toLocaleTimeString()}`;
       }
 
@@ -145,49 +164,14 @@
       return;
     }
 
-    // 3. Client Web Speech API Fallback (Guarantees voice feedback in any environment)
-    if ("speechSynthesis" in window) {
-      try {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = speed;
-        utterance.pitch = Math.max(0.1, Math.min(2.0, (pitch + 20) / 20)); // normalize pitch
-        
-        const langMap = {
-          "ko-KR": "ko-KR",
-          "en-US": "en-US",
-          "zh-CN": "zh-CN",
-          "ja-JP": "ja-JP",
-          "pt-BR": "pt-BR",
-          "es-ES": "es-ES"
-        };
-        if (langMap[language]) {
-          utterance.lang = langMap[language];
-        }
-
-        utterance.onend = () => {
-          setLoading(false);
-        };
-        utterance.onerror = () => {
-          setLoading(false);
-        };
-
-        window.speechSynthesis.speak(utterance);
-
-        showAlert("서버 연결 대기 중으로 브라우저 로컬 고음질 음성 엔진으로 즉시 출력되었습니다.", "warning");
-        if (resultCard) resultCard.classList.remove("hidden");
-      } catch (speechErr) {
-        console.error("Speech synthesis error:", speechErr);
-        showAlert("음성 합성 요청에 실패했습니다. 네트워크 상태 또는 서버 배포 상태를 확인해주세요.", "error");
-      }
-    } else {
-      showAlert("서버 응답을 기다리는 중입니다. 잠시 후 다시 시도해주세요.", "error");
+    // In case of error, hide corrupt result card
+    if (resultCard) {
+      resultCard.classList.add("hidden");
     }
-
     setLoading(false);
   };
 
-  // Setup DOM listeners when document is ready
+  // Setup DOM listeners
   function initApp() {
     const textInput = document.getElementById("ttsTextInput");
     const charCount = document.getElementById("charCount");
@@ -200,7 +184,6 @@
     const logoutBtn = document.getElementById("logoutBtn");
     const userDisplay = document.getElementById("userDisplay");
 
-    // 1. Session check
     const token = localStorage.getItem("tts_auth_token");
     const user = localStorage.getItem("tts_user") || "admin";
     if (userDisplay) userDisplay.textContent = user;
@@ -210,7 +193,6 @@
       return;
     }
 
-    // 2. Character counter updater
     function updateCount() {
       if (!textInput || !charCount) return;
       const count = textInput.value.length;
@@ -232,7 +214,6 @@
       });
     }
 
-    // 3. Slider displays
     if (speedSlider && speedValue) {
       speedSlider.addEventListener("input", (e) => {
         speedValue.textContent = `${parseFloat(e.target.value).toFixed(2)}x`;
@@ -246,7 +227,6 @@
       });
     }
 
-    // 4. Sample Chips
     sampleChips.forEach(chip => {
       chip.addEventListener("click", () => {
         const lang = chip.dataset.lang;
@@ -262,19 +242,14 @@
       });
     });
 
-    // 5. Logout
     if (logoutBtn) {
-      logoutBtn.addEventListener("click", async () => {
+      logoutBtn.addEventListener("click", () => {
         localStorage.removeItem("tts_auth_token");
         localStorage.removeItem("tts_user");
-        try {
-          await fetch("/api/logout", { method: "POST" });
-        } catch (e) {}
         window.location.href = "/login.html";
       });
     }
 
-    // 6. Generate Button listener
     const generateBtn = document.getElementById("generateBtn");
     if (generateBtn) {
       generateBtn.addEventListener("click", window.handleGenerateAudio);
