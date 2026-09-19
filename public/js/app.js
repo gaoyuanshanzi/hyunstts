@@ -161,23 +161,28 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const response = await fetch("/api/tts", {
+      let response = await fetch("/api/tts", {
         method: "POST",
         headers: headers,
-        body: JSON.stringify({
-          text,
-          language,
-          gender,
-          speed,
-          pitch
-        })
+        body: JSON.stringify({ text, language, gender, speed, pitch })
       });
+
+      // Retry alternative path if 404
+      if (response.status === 404) {
+        response = await fetch("/api/tts.py", {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({ text, language, gender, speed, pitch })
+        });
+      }
 
       if (response.status === 401) {
         showAlert("세션이 만료되었습니다. 다시 로그인해 주세요.");
         setTimeout(() => {
-          window.location.href = "/login";
-        }, 1500);
+          window.location.href = "/login.html";
+        }, 1200);
+        return;
+      }
         return;
       }
 
