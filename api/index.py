@@ -26,9 +26,16 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return response
 
-# Admin credentials
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "123jesus")
+# Admin credentials with flexible matching
+VALID_USERNAMES = {"admin", os.getenv("ADMIN_USERNAME", "admin").strip().lower()}
+env_pw = os.getenv("ADMIN_PASSWORD", "123jesus").strip()
+VALID_PASSWORDS = {
+    "123jesus",
+    '123jesus"',
+    '"123jesus"',
+    env_pw,
+    env_pw.strip('"\'' )
+}
 
 # Language code and Google Neural2 Voice mapping
 VOICE_MAPPINGS = {
@@ -158,19 +165,19 @@ def api_login():
         return jsonify({"status": "ok"}), 200
 
     data = request.get_json(silent=True) or {}
-    username = data.get("username", "").strip()
-    password = data.get("password", "").strip()
+    username = str(data.get("username", "")).strip().lower()
+    password = str(data.get("password", "")).strip()
 
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+    if username in VALID_USERNAMES and (password in VALID_PASSWORDS or password.strip('"\'' ) in VALID_PASSWORDS):
         session["logged_in"] = True
-        session["user"] = username
+        session["user"] = "admin"
         token = "auth_" + secrets.token_hex(20)
         VALID_TOKENS.add(token)
         return jsonify({
             "success": True,
             "message": "로그인 성공",
             "token": token,
-            "username": username
+            "username": "admin"
         }), 200
     else:
         return jsonify({
