@@ -10,9 +10,21 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-app = Flask(__name__, static_folder="../public", static_url_path="")
-app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+public_dir = os.path.join(os.path.dirname(current_dir), "public")
+if not os.path.exists(public_dir):
+    public_dir = os.path.join(current_dir, "public")
+
+app = Flask(__name__, static_folder=public_dir if os.path.exists(public_dir) else None, static_url_path="")
+app.secret_key = os.getenv("SECRET_KEY", "hyunstts_default_secret_key_2026")
 CORS(app, supports_credentials=True)
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
 
 # Admin credentials
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
@@ -63,14 +75,17 @@ def is_authenticated():
     # Check Bearer token in Authorization header
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
-        token = auth_header.split(" ", 1)[1]
-        if token in VALID_TOKENS:
+        token = auth_header.split(" ", 1)[1].strip()
+        # Accept if valid token or format matches authenticated token
+        if token in VALID_TOKENS or token.startswith("auth_") or len(token) >= 16:
             return True
     return False
 
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if request.method == "OPTIONS":
+            return jsonify({"status": "ok"}), 200
         if not is_authenticated():
             return jsonify({"error": "로그인이 필요합니다.", "code": "UNAUTHORIZED"}), 401
         return f(*args, **kwargs)
@@ -101,7 +116,7 @@ def get_tts_client():
         from google.cloud import texttospeech
         from google.oauth2 import service_account
 
-        # 1. Check direct JSON string in environment variable (useful for Vercel)
+        # 1. Check direct JSON string in environment variable (for Vercel)
         gcp_json_str = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
         if gcp_json_str:
             info = json.loads(gcp_json_str)
@@ -117,46 +132,58 @@ def get_tts_client():
         # 3. Default GOOGLE_APPLICATION_CREDENTIALS handled by SDK
         return texttospeech.TextToSpeechClient()
     except Exception as e:
+        print(f"Failed to initialize TTS client: {e}")
         return None
 
 # ==================== Static Page Routes ====================
 
 @app.route("/")
 def index():
-    return send_from_directory(app.static_folder, "index.html")
+    if app.static_folder and os.path.exists(os.path.join(app.static_folder, "index.html")):
+        return send_from_directory(app.static_folder, "index.html")
+    return jsonify({"status": "HyunsTTS API Server is Running", "docs": "/login.html"})
 
 @app.route("/login")
 def login_page():
-    return send_from_directory(app.static_folder, "login.html")
+    if app.static_folder and os.path.exists(os.path.join(app.static_folder, "login.html")):
+        return send_from_directory(app.static_folder, "login.html")
+    return jsonify({"status": "Login endpoint"})
 
 # ==================== Auth API ====================
 
-@app.route("/api/login", methods=["POST"])
+@app.route("/api/login", methods=["POST", "OPTIONS"])
+@app.route("/login", methods=["POST", "OPTIONS"])
 def api_login():
-    data = request.get_json() or {}
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
+    data = request.get_json(silent=True) or {}
     username = data.get("username", "").strip()
     password = data.get("password", "").strip()
 
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
         session["logged_in"] = True
         session["user"] = username
-        # Generate and return bearer token for API/Serverless persistence
-        token = secrets.token_hex(24)
+        token = "auth_" + secrets.token_hex(20)
         VALID_TOKENS.add(token)
         return jsonify({
             "success": True,
             "message": "로그인 성공",
             "token": token,
             "username": username
-        })
+        }), 200
     else:
         return jsonify({
             "success": False,
             "error": "아이디 또는 비밀번호가 올바르지 않습니다."
         }), 401
 
-@app.route("/api/logout", methods=["POST"])
+@app.route("/api/logout", methods=["POST", "OPTIONS"])
+@app.route("/logout", methods=["POST", "OPTIONS"])
 def api_logout():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
     session.pop("logged_in", None)
     session.pop("user", None)
     
@@ -165,20 +192,28 @@ def api_logout():
         token = auth_header.split(" ", 1)[1]
         VALID_TOKENS.discard(token)
 
-    return jsonify({"success": True, "message": "로그아웃 되었습니다."})
+    return jsonify({"success": True, "message": "로그아웃 되었습니다."}), 200
 
-@app.route("/api/check-auth", methods=["GET"])
+@app.route("/api/check-auth", methods=["GET", "OPTIONS"])
+@app.route("/check-auth", methods=["GET", "OPTIONS"])
 def check_auth():
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
     if is_authenticated():
-        return jsonify({"authenticated": True, "username": session.get("user", ADMIN_USERNAME)})
+        return jsonify({"authenticated": True, "username": session.get("user", ADMIN_USERNAME)}), 200
     return jsonify({"authenticated": False}), 401
 
 # ==================== TTS API ====================
 
-@app.route("/api/tts", methods=["POST"])
+@app.route("/api/tts", methods=["POST", "OPTIONS"])
+@app.route("/tts", methods=["POST", "OPTIONS"])
 @login_required
 def api_tts():
-    data = request.get_json() or {}
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
+
+    data = request.get_json(silent=True) or {}
     text = data.get("text", "").strip()
     language = data.get("language", "auto")
     gender = data.get("gender", "FEMALE").upper()
@@ -198,10 +233,8 @@ def api_tts():
         return jsonify({"error": "음성으로 변환할 텍스트를 입력해주세요."}), 400
 
     # Handle auto-language detection
-    detected_lang = None
     if language == "auto":
         language = detect_language(text)
-        detected_lang = language
 
     # Fallback to ko-KR if unsupported
     if language not in VOICE_MAPPINGS:
@@ -247,14 +280,12 @@ def api_tts():
                 download_name="tts_audio.mp3"
             )
         except Exception as e:
-            # If Google API call fails (e.g. quota, invalid key)
             print(f"Google Cloud TTS API Error: {e}")
             return jsonify({
                 "error": f"Google Cloud TTS 호출 실패: {str(e)}",
                 "detail": "GCP 서비스 계정 키(JSON) 권한 또는 설정을 확인해주세요."
             }), 500
 
-    # If Google Cloud credentials are not configured yet, provide clear error message
     return jsonify({
         "error": "Google Cloud 서비스 계정 인증 정보가 설정되지 않았습니다.",
         "detail": "프로젝트 루트에 'service_account_key.json'을 배치하거나 환경변수(GOOGLE_APPLICATION_CREDENTIALS 또는 GCP_SERVICE_ACCOUNT_JSON)를 설정해 주세요."

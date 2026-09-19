@@ -26,20 +26,29 @@ document.addEventListener("DOMContentLoaded", () => {
   // 1. Authentication Check
   async function verifyAuth() {
     const token = localStorage.getItem("tts_auth_token");
-    const user = localStorage.getItem("tts_user") || "admin";
+    const user = localStorage.getItem("tts_user");
+
+    // If no token exists, redirect to login page immediately
+    if (!token || !user) {
+      window.location.href = "/login.html";
+      return;
+    }
+
     if (userDisplay) userDisplay.textContent = user;
 
     try {
       const res = await fetch("/api/check-auth", {
-        headers: token ? { "Authorization": `Bearer ${token}` } : {}
+        headers: { "Authorization": `Bearer ${token}` }
       });
 
-      if (!res.ok) {
+      // Only redirect if explicitly rejected by server (401)
+      if (res.status === 401) {
         localStorage.removeItem("tts_auth_token");
-        window.location.href = "/login";
+        localStorage.removeItem("tts_user");
+        window.location.href = "/login.html";
       }
     } catch (err) {
-      console.warn("Auth check error, proceeding with session:", err);
+      console.warn("Auth check network error, maintaining local session:", err);
     }
   }
   verifyAuth();
