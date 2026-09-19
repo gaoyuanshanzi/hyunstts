@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>다국어 AI 음성 합성 - HyunsTTS</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Header / Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="nav-brand">
+        <div class="nav-logo">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="22"></line>
+          </svg>
+        </div>
+        <span class="nav-title">HyunsTTS</span>
+        <span class="badge-tag">Neural2 HD</span>
+      </div>
+
+      <div class="nav-actions">
+        <div class="user-info">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span id="userDisplay">admin</span>
+        </div>
+        <button id="logoutBtn" class="logout-btn" title="로그아웃">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          <span>로그아웃</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+    <div class="app-container">
+      <!-- Title Section -->
+      <div class="page-header">
+        <h1>자연스러운 다국어 음성 합성</h1>
+        <p>Google Cloud Neural2 엔진을 활용하여 원하는 언어와 억양으로 텍스트를 즉시 고음질 MP3로 변환하세요.</p>
+      </div>
+
+      <div class="tts-grid">
+        <!-- Left: Text Input Card -->
+        <section class="card text-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="step-num">1</span>
+              <h2>변환할 텍스트 입력</h2>
+            </div>
+            <div class="card-actions">
+              <span id="charCount" class="char-count">0 / 5,000자</span>
+              <button type="button" id="clearTextBtn" class="action-link-btn" title="텍스트 지우기">지우기</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <textarea 
+              id="ttsTextInput" 
+              class="tts-textarea" 
+              placeholder="음성으로 변환하고 싶은 문장을 입력하거나 붙여넣으세요.&#10;&#10;예시: 안녕하세요! Google Cloud Neural2 기반 다국어 음성 합성 서비스에 오신 것을 환영합니다." 
+              maxlength="5000"
+              rows="10"
+            ></textarea>
+
+            <div class="sample-chips">
+              <span class="sample-label">빠른 예시:</span>
+              <button type="button" class="sample-chip" data-lang="ko-KR" data-text="안녕하세요! Google Cloud 고품질 인공지능 보이스 모델을 통한 음성 합성 테스트입니다.">한국어</button>
+              <button type="button" class="sample-chip" data-lang="en-US" data-text="Welcome to the multilingual Text-to-Speech service powered by Google Cloud Neural2.">English</button>
+              <button type="button" class="sample-chip" data-lang="ja-JP" data-text="こんにちは！高品質な音声合成サービスへようこそ。自然な発音をお聞きください。">日本語</button>
+              <button type="button" class="sample-chip" data-lang="zh-CN" data-text="您好！欢迎体验基于谷歌云高品质神经网络的多语言语音合成服务。">中文</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right: Control Panel & Result Card -->
+        <div class="controls-column">
+          <!-- Control Panel -->
+          <section class="card controls-card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="step-num">2</span>
+                <h2>음성 옵션 설정</h2>
+              </div>
+            </div>
+
+            <div class="card-body">
+              <!-- Language Select -->
+              <div class="form-group">
+                <label for="languageSelect">
+                  <span>언어 선택</span>
+                  <span class="field-hint">지원 6개 언어 및 자동 감지</span>
+                </label>
+                <div class="select-wrapper">
+                  <select id="languageSelect" class="form-select">
+                    <option value="auto">🌐 자동 언어 감지 (Auto Detect)</option>
+                    <option value="ko-KR" selected>🇰🇷 한국어 (Korean - ko-KR)</option>
+                    <option value="en-US">🇺🇸 영어 (US English - en-US)</option>
+                    <option value="zh-CN">🇨🇳 중국어 (Mandarin - zh-CN)</option>
+                    <option value="ja-JP">🇯🇵 일본어 (Japanese - ja-JP)</option>
+                    <option value="pt-BR">🇧🇷 포르투갈어 (Portuguese - pt-BR)</option>
+                    <option value="es-ES">🇪🇸 스페인어 (Spanish - es-ES)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Voice Gender / Type -->
+              <div class="form-group">
+                <label>음성 유형</label>
+                <div class="radio-toggle-group">
+                  <label class="radio-toggle-option">
+                    <input type="radio" name="voiceGender" value="FEMALE" checked>
+                    <span class="radio-btn-pill">👩 여성 (Neural2)</span>
+                  </label>
+                  <label class="radio-toggle-option">
+                    <input type="radio" name="voiceGender" value="MALE">
+                    <span class="radio-btn-pill">👨 남성 (Neural2)</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Speaking Rate Slider -->
+              <div class="form-group">
+                <div class="slider-header">
+                  <label for="speedSlider">음성 속도 (Speaking Rate)</label>
+                  <span id="speedValue" class="slider-value-badge">1.0x</span>
+                </div>
+                <input 
+                  type="range" 
+                  id="speedSlider" 
+                  class="custom-slider" 
+                  min="0.5" 
+                  max="2.0" 
+                  step="0.05" 
+                  value="1.0"
+                >
+                <div class="slider-ticks">
+                  <span>0.5x (느림)</span>
+                  <span>1.0x (보통)</span>
+                  <span>2.0x (빠름)</span>
+                </div>
+              </div>
+
+              <!-- Pitch Slider -->
+              <div class="form-group">
+                <div class="slider-header">
+                  <label for="pitchSlider">음성 피치 (Pitch)</label>
+                  <span id="pitchValue" class="slider-value-badge">0.0</span>
+                </div>
+                <input 
+                  type="range" 
+                  id="pitchSlider" 
+                  class="custom-slider" 
+                  min="-20.0" 
+                  max="20.0" 
+                  step="0.5" 
+                  value="0.0"
+                >
+                <div class="slider-ticks">
+                  <span>-20.0 (저음)</span>
+                  <span>0.0 (기본)</span>
+                  <span>+20.0 (고음)</span>
+                </div>
+              </div>
+
+              <!-- Generate Button -->
+              <div class="action-btn-area">
+                <button type="button" id="generateBtn" class="generate-btn">
+                  <div class="btn-spinner hidden" id="generateSpinner"></div>
+                  <svg id="generateIcon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                  </svg>
+                  <span id="generateBtnText">음성 변환 시작 (Synthesize)</span>
+                </button>
+              </div>
+
+              <div id="alertBox" class="alert-box hidden"></div>
+            </div>
+          </section>
+
+          <!-- Result & Audio Player Card -->
+          <section id="resultCard" class="card result-card hidden">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="step-num success">✓</span>
+                <h2>음성 합성 완료</h2>
+              </div>
+              <span id="audioTimeBadge" class="timestamp-badge">방금 전</span>
+            </div>
+            <div class="card-body">
+              <div class="audio-player-wrapper">
+                <audio id="audioPlayer" controls class="native-audio"></audio>
+              </div>
+
+              <div class="download-action-row">
+                <a id="downloadBtn" class="download-btn" href="#" download="tts_audio.mp3">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span>MP3 다운로드</span>
+                </a>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <p>© 2026 HyunsTTS. Powered by Google Cloud Text-to-Speech API.</p>
+  </footer>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
